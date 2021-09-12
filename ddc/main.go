@@ -12,16 +12,15 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"time"
 
 	"periph.io/x/conn/v3/i2c"
 	"periph.io/x/conn/v3/i2c/i2creg"
 	"periph.io/x/host/v3"
 )
 
-func calc(d []byte) []byte {
-	d = append([]byte{0x50, 0x80 | byte(len(d))}, d...)
-	c := byte(0x50)
+func ddcPacket(host byte, d []byte) []byte {
+	d = append([]byte{host, 0x80 | byte(len(d))}, d...)
+	c := byte(host)
 	for _, b := range d {
 		c = c ^ b
 	}
@@ -50,31 +49,42 @@ func mainImpl() error {
 	}
 	defer bus.Close()
 
-	// DDC-CI command address.
-	d := i2c.Dev{Bus: bus, Addr: 0x37}
+	// DDC-CI command address: 0x37
+	// EDID: 0xA0
+	d := i2c.Dev{Bus: bus, Addr: 0xA0}
 
 	// https://glenwing.github.io/docs/VESA-DDCCI-1.1.pdf
-	w := calc([]byte{0xF3, 0, 0})
-	if err = d.Tx(w[:], nil); err != nil {
-		return err
-	}
-	time.Sleep(40 * time.Millisecond)
-
-	r := [256]byte{}
-	if err = d.Tx(nil, r[:2]); err != nil {
-		return err
-	}
-	l := r[1] &^ 0x80
-	for i := byte(0); i < l; i += 32 {
-		v := l - i
-		if v > 32 {
-			v = 32
-		}
-		if err = d.Tx(nil, r[i:v]); err != nil {
+	// https://en.wikipedia.org/wiki/Extended_Display_Identification_Data
+	// http://read.pudn.com/downloads110/ebook/456020/E-EDID%20Standard.pdf
+	/*
+		w := ddcPacket(0x50, []byte{0xF3, 0, 0})
+		if err = d.Tx(w[:], nil); err != nil {
 			return err
 		}
+		time.Sleep(40 * time.Millisecond)
+
+		r := [256]byte{}
+		if err = d.Tx(nil, r[:2]); err != nil {
+			return err
+		}
+		l := r[1] &^ 0x80
+		for i := byte(0); i < l; i += 32 {
+			v := l - i
+			if v > 32 {
+				v = 32
+			}
+			if err = d.Tx(nil, r[i:v]); err != nil {
+				return err
+			}
+		}
+		fmt.Printf("%#x\n", r[:l])
+	*/
+
+	w := ddcPacket(0xA1, make([]byte, 1))
+	if err = d.Tx(w, nil); err != nil {
+		return err
 	}
-	fmt.Printf("%#x\n", r[:l])
+
 	/*
 		for i, b := range buf {
 			if i != 0 {
